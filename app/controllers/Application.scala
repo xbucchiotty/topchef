@@ -6,26 +6,21 @@ import org.jsoup.Jsoup
 import org.jsoup.select.Elements
 import org.jsoup.nodes.Element
 import play.api.templates.Html
+import collection.JavaConversions._
 
 object Application extends Controller {
 
-  def console(consoleName: String) = Action {
+  def console(consoleName: String, top: Option[Int]) = Action {
     val page = Jsoup.connect("http://www.jeuxvideos.com/articles/listes/tests-%s-type-0-note-0-tri-0-0.htm".format(consoleName)).get()
-    val games: Elements = page.select("tr.tr1")
-    val lines = games.toArray.map(line => extract(line.asInstanceOf[Element])).map(_.toString).mkString("\n")
+    val games: Iterator[Element] = page.select("tr.tr1").iterator() ++ page.select("tr.tr2").iterator()
 
-    val content = """
-                    |<table class="table">
-                    |<thead>
-                    |<th>Name</th><th>Release date</th><th>Note</th>
-                    |</thead>
-                    |<tbody>
-                    |%s
-                    |</tbody>
-                    |</table>
-                  """.stripMargin.format(lines)
+    val gamesList: List[Game] = games.map(extract).toList
 
-    Ok(views.html.index(Html(content)))
+    if (top.isDefined) {
+      Ok(views.html.main(gamesList.sortWith((g1, g2) => g1.note > g2.note).take(top.get)))
+    } else {
+      Ok(views.html.main(gamesList))
+    }
   }
 
   def index = Action {
@@ -34,15 +29,13 @@ object Application extends Controller {
 
   def extract(el: Element): Game = {
     val gameLine = el.select("td")
-    Game(gameLine.first().select("a").text(), gameLine.get(3).text(), gameLine.get(5).text().toInt)
+    Game(
+      title = gameLine.first().select("a").text(),
+      date = gameLine.get(3).text(),
+      note = gameLine.get(5).text().toInt
+    )
   }
 
-
-  def gameLine: (String) => Boolean = {
-    line => line.contains("\"tr1\"") || line.contains("\"tr2\"")
-  }
 }
 
-case class Game(title: String, date: String, note: Int) {
-  override def toString: String = "<tr><td>%s</td><td>%s</td><td>%d</td></tr>".format(title, date, note)
-}
+case class Game(title: String, date: String, note: Int)
